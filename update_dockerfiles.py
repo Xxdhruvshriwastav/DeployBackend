@@ -14,8 +14,8 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 ENTRYPOINT ["java", \\
   "-XX:+UseG1GC", \\
-  "-Xmx512m", \\
-  "-Xms256m", \\
+  "-Xmx256m", \\
+  "-Xms64m", \\
   "-XX:MaxRAMPercentage=75.0", \\
   "-Djava.security.egd=file:/dev/./urandom", \\
   "-jar", "app.jar"]
