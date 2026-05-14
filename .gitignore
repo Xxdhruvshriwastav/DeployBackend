@@ -1,0 +1,113 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#  HireConnect — Backend .gitignore
+#  Covers: Maven, Spring Boot, Java, IntelliJ IDEA, Eclipse / STS, VS Code,
+#          Docker, OS files, and project-specific artifacts.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ─── Maven Build Output ────────────────────────────────────────────────────────
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Maven wrapper binary (keep the script, ignore the downloaded jar cache)
+.mvn/wrapper/MavenWrapperDownloader.java
+
+# ─── Spring Boot / Java ───────────────────────────────────────────────────────
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+!docker/**/*.zip
+
+# Spring Boot executable jar (produced by Maven)
+**/target/*.jar
+
+# JVM crash dumps & replay logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Log files
+logs/
+*.log
+
+# ─── IntelliJ IDEA ────────────────────────────────────────────────────────────
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# ─── Eclipse / Spring Tool Suite (STS) ───────────────────────────────────────
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+.metadata/
+bin/
+tmp/
+!**/src/main/**/tmp/
+!**/src/test/**/tmp/
+
+# ─── VS Code ──────────────────────────────────────────────────────────────────
+.vscode/
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml and Dockerfiles, but ignore local override files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ─── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.secret
+secrets/
+application-local.properties
+application-local.yml
+application-prod.properties
+application-prod.yml
+**/src/main/resources/application-local.properties
+**/src/main/resources/application-local.yml
+
+# ─── Project-Specific Runtime Artifacts ──────────────────────────────────────
+# Eureka status snapshots (generated at runtime, not source)
+eureka_status.json
+eureka_status_utf8.json
+
+# ─── OS-Generated Files ───────────────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ─── Test & Coverage Reports ──────────────────────────────────────────────────
+**/target/surefire-reports/
+**/target/failsafe-reports/
+**/target/site/
+coverage/
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+*.swp
+*.swo
+*.bak
+*.orig
+*.tmp
+nbproject/

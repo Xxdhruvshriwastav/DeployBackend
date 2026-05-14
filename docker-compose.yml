@@ -1,0 +1,281 @@
+services:
+
+  # ─── Infrastructure ────────────────────────────────────────────────────────────
+
+  mysql:
+    image: mysql:8.0
+    container_name: hc-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: Nty99hd8r@
+    volumes:
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - mysql_data:/var/lib/mysql
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pNty99hd8r@"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 40s
+
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    container_name: hc-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_ERLANG_COOKIE=secret_cookie_123
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # Healthcheck removed temporarily to see if it helps with startup stability
+
+  # ─── Service Registry ──────────────────────────────────────────────────────────
+
+  eureka-server:
+    build: ./eureka-server
+    container_name: hc-eureka
+    ports:
+      - "8761:8761"
+    environment:
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8761/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ─── API Gateway ───────────────────────────────────────────────────────────────
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: hc-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - EUREKA_HOST=eureka-server
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Backend Microservices ─────────────────────────────────────────────────────
+
+  auth-service:
+    build: ./auth-service
+    container_name: hc-auth
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  profile-service:
+    build: ./profile-service
+    container_name: hc-profile
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  job-service:
+    build: ./job-service
+    container_name: hc-job
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+      - RABBIT_HOST=rabbitmq
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  application-service:
+    build: ./application-service
+    container_name: hc-application
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  notification-service:
+    build: ./notification-service
+    container_name: hc-notification
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+      - RABBIT_HOST=rabbitmq
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  payment-service:
+    build: ./payment-service
+    container_name: hc-payment
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  subscription-service:
+    build: ./subscription-service
+    container_name: hc-subscription
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+      - RABBIT_HOST=rabbitmq
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  interview-service:
+    build: ./interview-service
+    container_name: hc-interview
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: hc-analytics
+    environment:
+      - EUREKA_HOST=eureka-server
+      - DB_HOST=mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Frontend ──────────────────────────────────────────────────────────────────
+
+  frontend:
+    build: ../../hireconnect-frontend/hireconnect-frontend
+    container_name: hc-frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - hc-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+# ─── Network & Volumes ─────────────────────────────────────────────────────────
+
+networks:
+  hc-network:
+    driver: bridge
+
+volumes:
+  mysql_data:

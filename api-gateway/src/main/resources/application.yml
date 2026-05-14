@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      routes:
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:lb://AUTH-SERVICE}
+          predicates:
+            - Path=/api/v1/auth/**
+
+        - id: profile-service
+          uri: ${PROFILE_SERVICE_URL:lb://PROFILE-SERVICE}
+          predicates:
+            - Path=/api/v1/profiles/**
+
+        - id: job-service
+          uri: ${JOB_SERVICE_URL:lb://JOB-SERVICE}
+          predicates:
+            - Path=/api/v1/jobs/**
+
+        - id: application-service
+          uri: ${APPLICATION_SERVICE_URL:lb://APPLICATION-SERVICE}
+          predicates:
+            - Path=/api/v1/applications/**
+
+        - id: interview-service
+          uri: ${INTERVIEW_SERVICE_URL:lb://INTERVIEW-SERVICE}
+          predicates:
+            - Path=/api/v1/interviews/**
+            
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:lb://NOTIFICATION-SERVICE}
+          predicates:
+            - Path=/api/v1/notifications/**
+
+        - id: subscription-service
+          uri: ${SUBSCRIPTION_SERVICE_URL:lb://SUBSCRIPTION-SERVICE}
+          predicates:
+            - Path=/api/v1/subscription/**
+
+        - id: payment-service
+          uri: ${PAYMENT_SERVICE_URL:lb://PAYMENT-SERVICE}
+          predicates:
+            - Path=/api/v1/payment/**
+
+        - id: analytics-service
+          uri: ${ANALYTICS_SERVICE_URL:lb://ANALYTICS-SERVICE}
+          predicates:
+            - Path=/api/v1/analytics/**
+
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowed-headers: "*"
+            allow-credentials: true
+
+server:
+  port: 8080
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG

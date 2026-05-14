@@ -1,0 +1,11 @@
+target/
+!target/*.jar
+.git
+*.log
+hs_err_pid*.log
+replay_pid*.log
+.settings/
+.classpath
+.project
+.factorypath
+.idea/
