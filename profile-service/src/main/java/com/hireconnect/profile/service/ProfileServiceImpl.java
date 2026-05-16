@@ -18,6 +18,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
+import com.hireconnect.profile.exception.CustomException;
 
 @Service
 @RequiredArgsConstructor
@@ -46,7 +48,7 @@ public class ProfileServiceImpl implements ProfileService {
     public UserProfileDTO updateProfile(String email, UserProfileDTO profileData) {
         Optional<UserProfile> existingOpt = profileRepository.findByEmail(email);
         if (existingOpt.isEmpty()) {
-            throw new RuntimeException("Profile not found for email: " + email);
+            throw new CustomException("Profile not found for email: " + email, HttpStatus.NOT_FOUND);
         }
 
         UserProfile existing = existingOpt.get();
@@ -100,7 +102,7 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public UserProfileDTO getProfileByEmail(String email) {
         UserProfile profile = profileRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Profile not found for email: " + email));
+                .orElseThrow(() -> new CustomException("Profile not found for email: " + email, HttpStatus.NOT_FOUND));
         
         if (profile instanceof CandidateProfile) {
             return convertToCandidateDTO((CandidateProfile) profile);

@@ -1,6 +1,11 @@
 spring:
   application:
     name: analytics-service
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: 5672
+    username: guest
+    password: guest
 
 server:
   port: 8089

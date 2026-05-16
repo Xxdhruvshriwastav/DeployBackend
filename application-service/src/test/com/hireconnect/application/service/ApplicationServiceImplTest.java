@@ -1,10 +1,11 @@
 package com.hireconnect.application.service;
 
-import com.hireconnect.application.client.JobClient;
-import com.hireconnect.application.client.NotificationClient;
+import com.hireconnect.application.messaging.JobRpcClient;
+import com.hireconnect.application.messaging.NotificationPublisher;
 import com.hireconnect.application.dto.ApplicationDTO;
 import com.hireconnect.application.entity.Application;
 import com.hireconnect.application.repository.ApplicationRepository;
+import com.hireconnect.application.exception.CustomException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,10 +27,10 @@ class ApplicationServiceImplTest {
     private ApplicationRepository applicationRepository;
 
     @Mock
-    private NotificationClient notificationClient;
+    private NotificationPublisher notificationPublisher;
 
     @Mock
-    private JobClient jobClient;
+    private JobRpcClient jobRpcClient;
 
     @InjectMocks
     private ApplicationServiceImpl applicationService;
@@ -68,7 +69,7 @@ class ApplicationServiceImplTest {
                 .thenReturn(application);
 
 
-        when(jobClient.getRecruiterEmail(1L))
+        when(jobRpcClient.getRecruiterEmail(1L))
                 .thenReturn("recruiter@gmail.com");
 
 
@@ -79,7 +80,7 @@ class ApplicationServiceImplTest {
         assertEquals("test@gmail.com", result.getCandidateEmail());
 
         verify(applicationRepository, times(1)).save(any(Application.class));
-        verify(notificationClient, times(2)).sendEmail(anyString(), anyString()); // because in service, // 1. Candidate, 2. Recruiter
+        verify(notificationPublisher, times(2)).sendEmail(anyString(), anyString()); // because in service, // 1. Candidate, 2. Recruiter
 
     }
 
@@ -93,7 +94,7 @@ class ApplicationServiceImplTest {
                 .thenReturn(Optional.of(application));
 
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () ->
+        CustomException exception = assertThrows(CustomException.class, () ->
                 applicationService.submitApplication(applicationDTO)
         );
 
@@ -116,7 +117,7 @@ class ApplicationServiceImplTest {
         when(applicationRepository.save(any(Application.class)))
                 .thenReturn(application);
 
-        when(jobClient.getRecruiterEmail(1L))
+        when(jobRpcClient.getRecruiterEmail(1L))
                 .thenReturn("recruiter@gmail.com");
 
 
@@ -125,7 +126,7 @@ class ApplicationServiceImplTest {
         assertNotNull(result);
 
         verify(applicationRepository).delete(application);
-        verify(notificationClient, times(2)).sendEmail(anyString(), anyString());
+        verify(notificationPublisher, times(2)).sendEmail(anyString(), anyString());
 
 
     }

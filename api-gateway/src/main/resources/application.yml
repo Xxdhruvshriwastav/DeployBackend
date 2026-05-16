@@ -14,41 +14,57 @@ spring:
           uri: ${PROFILE_SERVICE_URL:lb://PROFILE-SERVICE}
           predicates:
             - Path=/api/v1/profiles/**
+          filters:
+            - AuthenticationFilter
 
         - id: job-service
           uri: ${JOB_SERVICE_URL:lb://JOB-SERVICE}
           predicates:
             - Path=/api/v1/jobs/**
+          filters:
+            - AuthenticationFilter
 
         - id: application-service
           uri: ${APPLICATION_SERVICE_URL:lb://APPLICATION-SERVICE}
           predicates:
             - Path=/api/v1/applications/**
+          filters:
+            - AuthenticationFilter
 
         - id: interview-service
           uri: ${INTERVIEW_SERVICE_URL:lb://INTERVIEW-SERVICE}
           predicates:
             - Path=/api/v1/interviews/**
+          filters:
+            - AuthenticationFilter
             
         - id: notification-service
           uri: ${NOTIFICATION_SERVICE_URL:lb://NOTIFICATION-SERVICE}
           predicates:
             - Path=/api/v1/notifications/**
+          filters:
+            - AuthenticationFilter
 
         - id: subscription-service
           uri: ${SUBSCRIPTION_SERVICE_URL:lb://SUBSCRIPTION-SERVICE}
           predicates:
             - Path=/api/v1/subscription/**
+          filters:
+            - AuthenticationFilter
 
         - id: payment-service
           uri: ${PAYMENT_SERVICE_URL:lb://PAYMENT-SERVICE}
           predicates:
             - Path=/api/v1/payment/**
+          filters:
+            - AuthenticationFilter
 
         - id: analytics-service
           uri: ${ANALYTICS_SERVICE_URL:lb://ANALYTICS-SERVICE}
           predicates:
             - Path=/api/v1/analytics/**
+          filters:
+            - AuthenticationFilter
 
       globalcors:
         cors-configurations:
@@ -65,6 +81,9 @@ spring:
 
 server:
   port: 8080
+
+jwt:
+  secret: hireconnect_super_secret_key_minimum_32_chars_2026
 
 eureka:
   client:

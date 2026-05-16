@@ -1,6 +1,6 @@
 package com.hireconnect.payment.service;
 
-import com.hireconnect.payment.client.SubscriptionClient;
+import com.hireconnect.payment.messaging.PaymentMessagingClient;
 import com.hireconnect.payment.dto.OrderRequest;
 import com.hireconnect.payment.dto.OrderResponse;
 import com.hireconnect.payment.dto.PaymentVerificationRequest;
@@ -10,6 +10,8 @@ import com.razorpay.RazorpayException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import com.hireconnect.payment.exception.CustomException;
 
 @Service
 @RequiredArgsConstructor
@@ -17,7 +19,7 @@ import org.springframework.stereotype.Service;
 public class PaymentServiceImpl {
 
     private final RazorpayService razorpayService;
-    private final SubscriptionClient subscriptionClient;
+    private final PaymentMessagingClient messagingClient;
 
     public OrderResponse createOrder(OrderRequest request) {
         try {
@@ -30,7 +32,7 @@ public class PaymentServiceImpl {
                     .build();
         } catch (RazorpayException e) {
             log.error("Failed to create order: {}", e.getMessage());
-            throw new RuntimeException("Error creating Razorpay order", e);
+            throw new CustomException("Error creating Razorpay order: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -41,29 +43,27 @@ public class PaymentServiceImpl {
                 request.getRazorpaySignature()
         );
 
-        if (isValid) {
-            log.info("Payment Signature verified successfully. Calling Subscription Service.");
-            // Call subscription service to activate plan and generate invoice
-            SubscriptionRequestDto subRequest = SubscriptionRequestDto.builder()
-                    .userId(request.getUserId())
-                    .plan(request.getPlan())
-                    .amount(request.getAmount())
-                    .paymentMode(request.getPaymentMode())
-                    .transactionId(request.getRazorpayPaymentId())
-                    .build();
-
-            try {
-                subscriptionClient.createSubscription(subRequest);
-                log.info("Subscription created successfully via FeignClient.");
-                return true;
-            } catch (Exception e) {
-                log.error("Failed to call subscription-service: {}", e.getMessage());
-                // In a real scenario, handle retry or compensation
-                return false;
-            }
-        } else {
+        if (!isValid) {
             log.warn("Payment signature verification failed.");
             return false;
         }
+
+        log.info("Payment signature verified. Calling Subscription Service via RabbitMQ.");
+
+        SubscriptionRequestDto subRequest = SubscriptionRequestDto.builder()
+                .userId(request.getUserId())
+                .plan(request.getPlan())
+                .amount(request.getAmount())
+                .paymentMode(request.getPaymentMode())
+                .transactionId(request.getRazorpayPaymentId())
+                .build();
+
+        boolean subscriptionCreated = messagingClient.createSubscription(subRequest);
+        if (subscriptionCreated) {
+            log.info("Subscription created successfully via RabbitMQ RPC.");
+        } else {
+            log.error("Subscription creation failed via RabbitMQ RPC.");
+        }
+        return subscriptionCreated;
     }
 }

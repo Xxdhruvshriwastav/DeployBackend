@@ -1,8 +1,6 @@
 package com.hireconnect.notification.config;
 
 import org.springframework.amqp.core.*;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -11,13 +9,13 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    public static final String QUEUE = "notification_queue";
-    public static final String EXCHANGE = "notification_exchange";
+    public static final String QUEUE       = "notification_queue";
+    public static final String EXCHANGE    = "notification_exchange";
     public static final String ROUTING_KEY = "notification_routingKey";
 
     @Bean
     public Queue queue() {
-        return new Queue(QUEUE);
+        return new Queue(QUEUE, true);
     }
 
     @Bean
@@ -30,15 +28,9 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(queue).to(exchange).with(ROUTING_KEY);
     }
 
+    // Spring Boot picks this up and injects into its auto-configured RabbitTemplate
     @Bean
     public MessageConverter converter() {
         return new Jackson2JsonMessageConverter();
-    }
-
-    @Bean
-    public AmqpTemplate template(ConnectionFactory connectionFactory) {
-        final RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
-        rabbitTemplate.setMessageConverter(converter());
-        return rabbitTemplate;
     }
 }

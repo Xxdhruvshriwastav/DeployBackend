@@ -5,10 +5,7 @@ import com.hireconnect.subscription.dto.SubscriptionRequest;
 import com.hireconnect.subscription.dto.SubscriptionResponse;
 import com.hireconnect.subscription.entity.Invoice;
 import com.hireconnect.subscription.entity.Subscription;
-import com.hireconnect.subscription.client.AuthServiceClient;
-import com.hireconnect.subscription.client.NotificationServiceClient;
-import com.hireconnect.subscription.dto.NotificationDTO;
-import com.hireconnect.subscription.dto.UserDTO;
+import com.hireconnect.subscription.messaging.SubscriptionMessagingClient;
 import com.hireconnect.subscription.repository.InvoiceRepository;
 import com.hireconnect.subscription.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -29,16 +27,16 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final InvoiceRepository invoiceRepository;
-    private final AuthServiceClient authServiceClient;
-    private final NotificationServiceClient notificationServiceClient;
+    private final SubscriptionMessagingClient messagingClient;
 
     @Override
     @Transactional
     public SubscriptionResponse subscribe(SubscriptionRequest request) {
         log.info("Processing subscription for user: {}", request.getUserId());
-        
-        // Cancel any existing active subscriptions first (or handle upgrades)
-        Optional<Subscription> existingActive = subscriptionRepository.findByRecruiterIdAndStatus(request.getUserId(), "ACTIVE");
+
+        // Cancel any existing active subscription
+        Optional<Subscription> existingActive =
+                subscriptionRepository.findByRecruiterIdAndStatus(request.getUserId(), "ACTIVE");
         if (existingActive.isPresent()) {
             Subscription activeSub = existingActive.get();
             activeSub.setStatus("CANCELLED");
@@ -46,13 +44,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         }
 
         LocalDate startDate = LocalDate.now();
-        LocalDate endDate = startDate.plusDays(30); // Default 1 month for this case study
-        
-        if ("ENTERPRISE".equalsIgnoreCase(request.getPlan())) {
-            endDate = startDate.plusDays(365);
-        }
+        LocalDate endDate   = "ENTERPRISE".equalsIgnoreCase(request.getPlan())
+                ? startDate.plusDays(365)
+                : startDate.plusDays(30);
 
-        // Create new subscription
         Subscription subscription = Subscription.builder()
                 .recruiterId(request.getUserId())
                 .plan(request.getPlan().toUpperCase())
@@ -62,52 +57,54 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .amountPaid(request.getAmount())
                 .build();
 
-        Subscription savedSubscription = subscriptionRepository.save(subscription);
+        Subscription saved = subscriptionRepository.save(subscription);
 
         // Generate Invoice
-        generateInvoice(savedSubscription.getSubscriptionId(), request.getUserId(), request.getAmount(), request.getPaymentMode(), request.getTransactionId());
+        generateInvoice(saved.getSubscriptionId(), request.getUserId(),
+                request.getAmount(), request.getPaymentMode(), request.getTransactionId());
 
+        // ── Notify via RabbitMQ ───────────────────────────────────────────────
         try {
-            UserDTO user = authServiceClient.getUserById(request.getUserId().intValue());
-            if (user != null && user.getEmail() != null) {
+            // 1. Get user email from auth-service via RabbitMQ RPC
+            Map<String, Object> user = messagingClient.getUserById(request.getUserId().intValue());
+            String email = (String) user.get("email");
+
+            if (email != null && !email.isBlank()) {
                 String invoiceMessage = String.format(
-                        "Dear Customer,\n\nThank you for subscribing to %s Plan.\n\n" +
-                        "Invoice Details:\n" +
-                        "Subscription ID: %d\n" +
-                        "Amount Paid: Rs. %.2f\n" +
-                        "Payment Mode: %s\n" +
-                        "Transaction ID: %s\n" +
-                        "Valid Until: %s\n\n" +
-                        "Regards,\nHireConnect Team",
+                        "Dear Customer,\n\nThank you for subscribing to %s Plan.\n\n"
+                        + "Invoice Details:\n"
+                        + "Subscription ID: %d\n"
+                        + "Amount Paid: Rs. %.2f\n"
+                        + "Payment Mode: %s\n"
+                        + "Transaction ID: %s\n"
+                        + "Valid Until: %s\n\n"
+                        + "Regards,\nHireConnect Team",
                         request.getPlan().toUpperCase(),
-                        savedSubscription.getSubscriptionId(),
+                        saved.getSubscriptionId(),
                         request.getAmount(),
                         request.getPaymentMode(),
                         request.getTransactionId(),
-                        savedSubscription.getEndDate()
+                        saved.getEndDate()
                 );
 
-                NotificationDTO emailNotification = NotificationDTO.builder()
-                        .userId(user.getEmail())
-                        .type("EMAIL")
-                        .message(invoiceMessage)
-                        .build();
-                notificationServiceClient.sendNotification(emailNotification);
+                // 2. Send EMAIL notification (fire-and-forget via RabbitMQ)
+                messagingClient.sendNotification(email, "EMAIL", invoiceMessage);
 
-                NotificationDTO inAppNotification = NotificationDTO.builder()
-                        .userId(String.valueOf(request.getUserId()))
-                        .type("INFO") // due to this, email will not send because type is not Alert and Email
-                        .message("Your subscription to " + request.getPlan() + " plan was successful. Invoice sent to email.")
-                        .build();
-                notificationServiceClient.sendNotification(inAppNotification);
-                
-                log.info("Invoice email sent to {}", user.getEmail());
+                // 3. Send in-app INFO notification
+                messagingClient.sendNotification(
+                        String.valueOf(request.getUserId()),
+                        "INFO",
+                        "Your subscription to " + request.getPlan()
+                        + " plan was successful. Invoice sent to email."
+                );
+
+                log.info("Invoice notifications queued for email={}", email);
             }
         } catch (Exception e) {
-            log.error("Failed to send invoice email/notification via Feign", e);
+            log.error("Failed to send notifications via RabbitMQ", e);
         }
 
-        return mapToResponse(savedSubscription);
+        return mapToResponse(saved);
     }
 
     @Override
@@ -115,7 +112,6 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     public SubscriptionResponse cancelSubscription(Long userId) {
         Subscription activeSub = subscriptionRepository.findByRecruiterIdAndStatus(userId, "ACTIVE")
                 .orElseThrow(() -> new RuntimeException("No active subscription found"));
-        
         activeSub.setStatus("CANCELLED");
         subscriptionRepository.save(activeSub);
         return mapToResponse(activeSub);
@@ -136,12 +132,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     public SubscriptionResponse getActiveSubscription(Long userId) {
-        Optional<Subscription> activeSub = subscriptionRepository.findByRecruiterIdAndStatus(userId, "ACTIVE");
-        return activeSub.map(this::mapToResponse).orElse(null);
+        return subscriptionRepository.findByRecruiterIdAndStatus(userId, "ACTIVE")
+                .map(this::mapToResponse)
+                .orElse(null);
     }
 
     @Override
-    public InvoiceDTO generateInvoice(Long subscriptionId, Long userId, Double amount, String paymentMode, String transactionId) {
+    public InvoiceDTO generateInvoice(Long subscriptionId, Long userId, Double amount,
+                                      String paymentMode, String transactionId) {
         Invoice invoice = Invoice.builder()
                 .subscriptionId(subscriptionId)
                 .recruiterId(userId)
@@ -150,8 +148,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .paymentMode(paymentMode)
                 .transactionId(transactionId)
                 .build();
-        Invoice savedInvoice = invoiceRepository.save(invoice);
-        return mapToInvoiceDTO(savedInvoice);
+        return mapToInvoiceDTO(invoiceRepository.save(invoice));
     }
 
     private SubscriptionResponse mapToResponse(Subscription sub) {

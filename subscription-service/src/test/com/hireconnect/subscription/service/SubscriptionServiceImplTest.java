@@ -1,9 +1,8 @@
 package com.hireconnect.subscription.service;
 
-import com.hireconnect.subscription.client.AuthServiceClient;
-import com.hireconnect.subscription.client.NotificationServiceClient;
 import com.hireconnect.subscription.dto.*;
 import com.hireconnect.subscription.entity.Subscription;
+import com.hireconnect.subscription.messaging.SubscriptionMessagingClient;
 import com.hireconnect.subscription.repository.InvoiceRepository;
 import com.hireconnect.subscription.repository.SubscriptionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +11,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,10 +28,7 @@ class SubscriptionServiceImplTest {
     private InvoiceRepository invoiceRepository;
 
     @Mock
-    private AuthServiceClient authServiceClient;
-
-    @Mock
-    private NotificationServiceClient notificationServiceClient;
+    private SubscriptionMessagingClient messagingClient;
 
     @InjectMocks
     private SubscriptionServiceImpl subscriptionService;
@@ -48,9 +46,7 @@ class SubscriptionServiceImplTest {
                 .build();
     }
 
-    // =========================
-    // SUBSCRIBE TEST
-    // =========================
+  
     @Test
     void testSubscribe_success() {
 
@@ -74,14 +70,14 @@ class SubscriptionServiceImplTest {
         when(invoiceRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        UserDTO user = new UserDTO();
-        user.setEmail("test@gmail.com");
+        Map<String, Object> user = new HashMap<>();
+        user.put("email", "test@gmail.com");
 
-        when(authServiceClient.getUserById(1))
+        when(messagingClient.getUserById(1))
                 .thenReturn(user);
 
-        doNothing().when(notificationServiceClient)
-                .sendNotification(any(NotificationDTO.class));
+        doNothing().when(messagingClient)
+                .sendNotification(anyString(), anyString(), anyString());
 
         SubscriptionResponse response = subscriptionService.subscribe(request);
 
@@ -93,13 +89,13 @@ class SubscriptionServiceImplTest {
         verify(invoiceRepository, times(1)).save(any());
 
         // 2 notifications: email + in-app
-        verify(notificationServiceClient, times(2))
-                .sendNotification(any(NotificationDTO.class));
+        verify(messagingClient, times(2))
+                .sendNotification(anyString(), anyString(), anyString());
     }
 
-    // =========================
+
     // EXISTING ACTIVE SUB CANCEL
-    // =========================
+
     @Test
     void testSubscribe_existingActiveCancelled() {
 
@@ -118,22 +114,23 @@ class SubscriptionServiceImplTest {
         when(invoiceRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        // Return null user → notification block is skipped (guarded by null check in impl)
-        when(authServiceClient.getUserById(1))
-                .thenReturn(null);
+        // Return empty user map (no email) → notification block is skipped
+        Map<String, Object> user = new HashMap<>();
+        when(messagingClient.getUserById(1))
+                .thenReturn(user);
 
         SubscriptionResponse response = subscriptionService.subscribe(request);
 
         assertNotNull(response);
 
         verify(subscriptionRepository, atLeast(2)).save(any());
-        // No notifications when user is null
-        verify(notificationServiceClient, never()).sendNotification(any());
+        // No notifications when user email is null
+        verify(messagingClient, never()).sendNotification(anyString(), anyString(), anyString());
     }
 
-    // =========================
+
     // CANCEL SUBSCRIPTION
-    // =========================
+
     @Test
     void testCancelSubscription_success() {
 
@@ -166,9 +163,9 @@ class SubscriptionServiceImplTest {
                 subscriptionService.cancelSubscription(1L));
     }
 
-    // =========================
+
     // GET ACTIVE SUB
-    // =========================
+
     @Test
     void testGetActiveSubscription() {
 
@@ -188,9 +185,9 @@ class SubscriptionServiceImplTest {
         assertEquals("ACTIVE", response.getStatus());
     }
 
-    // =========================
+
     // VERIFY INVOICE GENERATION
-    // =========================
+
     @Test
     void testGenerateInvoice() {
 

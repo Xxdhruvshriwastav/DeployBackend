@@ -1,7 +1,7 @@
 package com.hireconnect.application.service;
 
-import com.hireconnect.application.client.JobClient;
-import com.hireconnect.application.client.NotificationClient;
+import com.hireconnect.application.messaging.JobRpcClient;
+import com.hireconnect.application.messaging.NotificationPublisher;
 import com.hireconnect.application.dto.ApplicationDTO;
 import com.hireconnect.application.entity.Application;
 import com.hireconnect.application.repository.ApplicationRepository;
@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
+import com.hireconnect.application.exception.CustomException;
 
 @Slf4j
 @Service
@@ -18,47 +20,44 @@ import java.util.stream.Collectors;
 public class ApplicationServiceImpl implements ApplicationService {
 
     private final ApplicationRepository applicationRepository;
-    private final NotificationClient notificationClient;
-    private final JobClient jobClient;
+    private final NotificationPublisher notificationPublisher;
+    private final JobRpcClient jobRpcClient;
 
     @Override
     public ApplicationDTO submitApplication(ApplicationDTO applicationDTO) {
         // Check if already applied
         Optional<Application> existing = applicationRepository.findByJobIdAndCandidateEmail(
                 applicationDTO.getJobId(), applicationDTO.getCandidateEmail());
-        
+
         if (existing.isPresent()) {
             Application existingApp = existing.get();
             if (!"WITHDRAWN".equals(existingApp.getStatus())) {
-                throw new RuntimeException("You have already applied for this job and your application is " + existingApp.getStatus());
+                throw new CustomException("You have already applied for this job and your application is "
+                        + existingApp.getStatus(), HttpStatus.CONFLICT);
             }
-            // If withdrawn, we allow re-applying by deleting the old one or just continuing (we'll save a new one with a new ID or update)
-            // Let's delete the withdrawn one to allow a fresh start
             applicationRepository.delete(existingApp);
         }
 
         Application application = convertToEntity(applicationDTO);
         Application saved = applicationRepository.save(application);
 
-        // ── Send notifications
-
         String candidateEmail = saved.getCandidateEmail();
         Long jobId = saved.getJobId();
 
-        // 1. Notify candidate
-        notificationClient.sendEmail(
-            candidateEmail,
-            "Your application for Job #" + jobId + " has been submitted successfully! " +
-            "We will notify you of any updates. Good luck!"
+        // 1. Notify candidate via RabbitMQ (fire-and-forget)
+        notificationPublisher.sendEmail(
+                candidateEmail,
+                "Your application for Job #" + jobId + " has been submitted successfully! " +
+                "We will notify you of any updates. Good luck!"
         );
 
-        // 2. Notify recruiter — fetch recruiter email from Job-Service
-        String recruiterEmail = jobClient.getRecruiterEmail(jobId);
+        // 2. Fetch recruiter email via RabbitMQ RPC, then notify recruiter
+        String recruiterEmail = jobRpcClient.getRecruiterEmail(jobId);
         if (recruiterEmail != null && !recruiterEmail.isBlank()) {
-            notificationClient.sendEmail(
-                recruiterEmail,
-                "New application received for Job #" + jobId + "! " +
-                "Candidate: " + candidateEmail + " has applied. Review the application in your dashboard."
+            notificationPublisher.sendEmail(
+                    recruiterEmail,
+                    "New application received for Job #" + jobId + "! " +
+                    "Candidate: " + candidateEmail + " has applied. Review in your dashboard."
             );
         } else {
             log.warn("Could not determine recruiter email for jobId={}, skipping recruiter notification.", jobId);
@@ -84,7 +83,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     @Override
     public ApplicationDTO updateStatus(Long applicationId, String status) {
         Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new RuntimeException("Application not found"));
+                .orElseThrow(() -> new CustomException("Application not found", HttpStatus.NOT_FOUND));
         application.setStatus(status);
         Application updated = applicationRepository.save(application);
         return convertToDTO(updated);
@@ -93,7 +92,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     @Override
     public void withdrawApplication(Long applicationId) {
         Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new RuntimeException("Application not found"));
+                .orElseThrow(() -> new CustomException("Application not found", HttpStatus.NOT_FOUND));
         application.setStatus("WITHDRAWN");
         applicationRepository.save(application);
     }

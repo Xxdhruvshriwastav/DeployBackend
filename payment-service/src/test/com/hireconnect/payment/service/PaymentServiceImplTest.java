@@ -1,11 +1,13 @@
 package com.hireconnect.payment.service;
 
-import com.hireconnect.payment.client.SubscriptionClient;
+import com.hireconnect.payment.messaging.PaymentMessagingClient;
 import com.hireconnect.payment.dto.OrderRequest;
 import com.hireconnect.payment.dto.OrderResponse;
 import com.hireconnect.payment.dto.PaymentVerificationRequest;
 import com.hireconnect.payment.dto.SubscriptionRequestDto;
+import com.hireconnect.payment.exception.CustomException;
 import com.razorpay.Order;
+import com.razorpay.RazorpayException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +24,7 @@ class PaymentServiceImplTest {
     private RazorpayService razorpayService;
 
     @Mock
-    private SubscriptionClient subscriptionClient;
+    private PaymentMessagingClient messagingClient;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -74,9 +76,9 @@ class PaymentServiceImplTest {
     @Test
     void testCreateOrder_exception() throws Exception {
         when(razorpayService.createOrder(500.0))
-                .thenThrow(new RuntimeException("Razorpay error"));
+                .thenThrow(new RazorpayException("Razorpay error"));
 
-        assertThrows(RuntimeException.class, () ->
+        assertThrows(CustomException.class, () ->
                 paymentService.createOrder(orderRequest));
 
         verify(razorpayService, times(1)).createOrder(500.0);
@@ -92,8 +94,8 @@ class PaymentServiceImplTest {
                 "order_123", "payment_123", "signature_123"
         )).thenReturn(true);
 
-        when(subscriptionClient.createSubscription(any(SubscriptionRequestDto.class)))
-                .thenReturn(null); // no response needed
+        when(messagingClient.createSubscription(any(SubscriptionRequestDto.class)))
+                .thenReturn(true); 
 
         boolean result = paymentService.verifyPayment(verificationRequest);
 
@@ -102,7 +104,7 @@ class PaymentServiceImplTest {
         verify(razorpayService, times(1))
                 .verifyPaymentSignature(anyString(), anyString(), anyString());
 
-        verify(subscriptionClient, times(1))
+        verify(messagingClient, times(1))
                 .createSubscription(any(SubscriptionRequestDto.class));
     }
 
@@ -117,7 +119,7 @@ class PaymentServiceImplTest {
 
         assertFalse(result);
 
-        verify(subscriptionClient, never())
+        verify(messagingClient, never())
                 .createSubscription(any());
     }
 
@@ -128,14 +130,14 @@ class PaymentServiceImplTest {
                 "order_123", "payment_123", "signature_123"
         )).thenReturn(true);
 
-        when(subscriptionClient.createSubscription(any()))
-                .thenThrow(new RuntimeException("Subscription error"));
+        when(messagingClient.createSubscription(any()))
+                .thenReturn(false);
 
         boolean result = paymentService.verifyPayment(verificationRequest);
 
         assertFalse(result);
 
-        verify(subscriptionClient, times(1))
+        verify(messagingClient, times(1))
                 .createSubscription(any());
     }
 }

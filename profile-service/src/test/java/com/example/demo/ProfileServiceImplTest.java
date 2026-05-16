@@ -74,7 +74,7 @@ public class ProfileServiceImplTest {
                 .thenReturn(Optional.empty());
 
 
-        assertThrows(RuntimeException.class, () ->
+        assertThrows(com.hireconnect.profile.exception.CustomException.class, () ->
                 profileService.getProfileByEmail("test@gmail.com"));
     }
 
@@ -102,7 +102,7 @@ public class ProfileServiceImplTest {
 
         CandidateProfileDTO dto = new CandidateProfileDTO();
 
-        assertThrows(RuntimeException.class, () ->
+        assertThrows(com.hireconnect.profile.exception.CustomException.class, () ->
                 profileService.updateProfile("test@gmail.com", dto));
 
     }

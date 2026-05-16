@@ -19,4 +19,16 @@ public class InterviewDTO {
     private String location;
     private String status;
     private String notes;
+
+    /**
+     * Candidate email — required when scheduling so interview-service
+     * can send notifications directly via RabbitMQ.
+     */
+    private String candidateEmail;
+
+    /**
+     * Recruiter email — optional, used to notify recruiter on
+     * successful scheduling / cancellation.
+     */
+    private String recruiterEmail;
 }

@@ -1,39 +1,31 @@
 package com.hireconnect.analytics.service;
 
 import com.hireconnect.analytics.pojo.AnalyticsSummary;
-import com.hireconnect.analytics.client.JobClient;
-import com.hireconnect.analytics.client.ApplicationClient;
-import com.hireconnect.analytics.client.AuthClient;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.hireconnect.analytics.messaging.AnalyticsRpcClient;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsServiceImpl implements AnalyticsService {
 
-    @Autowired
-    private JobClient jobClient;
-
-    @Autowired
-    private ApplicationClient applicationClient;
-
-    @Autowired
-    private AuthClient authClient;
-
+    private final AnalyticsRpcClient rpcClient;
     private final Random random = new Random();
 
     @Override
     public int getJobViewCount(Long jobId) {
-        // Mocking view counts as there's no view tracking service yet
-
+        // Mocking view counts — no view tracking service yet
         return random.nextInt(100, 1000);
     }
 
     @Override
     public int getAppCountByJob(Long jobId) {
-        return applicationClient.countByJobs(List.of(jobId)).intValue();
+        return rpcClient.countByJobs(List.of(jobId)).intValue();
     }
 
     @Override
@@ -49,12 +41,18 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     public AnalyticsSummary getPipelineStats(Long recruiterId) {
         try {
-            // 1. Get recruiter email from Auth-Service
-            Map<String, Object> user = authClient.getUserById(recruiterId.intValue());
+            // 1. Get recruiter email from auth-service via RabbitMQ RPC
+            Map<String, Object> user = rpcClient.getUserById(recruiterId.intValue());
             String email = (String) user.get("email");
 
-            // 2. Get job IDs for this recruiter
-            List<Map<String, Object>> recruiterJobs = jobClient.getJobsByRecruiter(email);
+            if (email == null || email.isBlank()) {
+                return AnalyticsSummary.builder()
+                        .message("User not found for recruiterId=" + recruiterId)
+                        .build();
+            }
+
+            // 2. Get jobs for recruiter from job-service via RabbitMQ RPC
+            List<Map<String, Object>> recruiterJobs = rpcClient.getJobsByRecruiter(email);
             List<Long> jobIds = recruiterJobs.stream()
                     .map(j -> Long.valueOf(j.get("jobId").toString()))
                     .toList();
@@ -63,11 +61,11 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 return AnalyticsSummary.builder().build();
             }
 
-            // 3. Aggregate applications
-            long totalApps = applicationClient.countByJobs(jobIds);
-            long shortlisted = applicationClient.countByJobsAndStatus(jobIds, "SHORTLISTED");
-            long offered = applicationClient.countByJobsAndStatus(jobIds, "OFFERED");
-            long rejected = applicationClient.countByJobsAndStatus(jobIds, "REJECTED");
+            // 3. Aggregate application counts from application-service via RabbitMQ RPC
+            long totalApps    = rpcClient.countByJobs(jobIds);
+            long shortlisted  = rpcClient.countByJobsAndStatus(jobIds, "SHORTLISTED");
+            long offered      = rpcClient.countByJobsAndStatus(jobIds, "OFFERED");
+            long rejected     = rpcClient.countByJobsAndStatus(jobIds, "REJECTED");
 
             return AnalyticsSummary.builder()
                     .totalJobs(jobIds.size())
@@ -75,9 +73,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                     .shortlistedCount((int) shortlisted)
                     .offeredCount((int) offered)
                     .rejectedCount((int) rejected)
-                    .avgTimeToHireDays(22.5) // Simulation
-                    .viewToApplyRatio(totalApps > 0 ? (double)offered/totalApps : 0.0)
+                    .avgTimeToHireDays(22.5)
+                    .viewToApplyRatio(totalApps > 0 ? (double) offered / totalApps : 0.0)
                     .build();
+
         } catch (Exception e) {
             return AnalyticsSummary.builder()
                     .message("Error: " + e.getMessage())
@@ -88,11 +87,11 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     public AnalyticsSummary getPlatformStats() {
         try {
-            long totalJobs = jobClient.countJobs();
-            long totalApps = applicationClient.countAll();
-            long shortlisted = applicationClient.countByStatus("SHORTLISTED");
-            long offered = applicationClient.countByStatus("OFFERED");
-            long rejected = applicationClient.countByStatus("REJECTED");
+            long totalJobs  = rpcClient.countJobs();
+            long totalApps  = rpcClient.countAllApplications();
+            long shortlisted = rpcClient.countByStatus("SHORTLISTED");
+            long offered    = rpcClient.countByStatus("OFFERED");
+            long rejected   = rpcClient.countByStatus("REJECTED");
 
             return AnalyticsSummary.builder()
                     .totalJobs((int) totalJobs)
@@ -101,8 +100,9 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                     .offeredCount((int) offered)
                     .rejectedCount((int) rejected)
                     .avgTimeToHireDays(28.5)
-                    .viewToApplyRatio(totalApps > 0 ? (double)offered/totalApps : 0.0)
+                    .viewToApplyRatio(totalApps > 0 ? (double) offered / totalApps : 0.0)
                     .build();
+
         } catch (Exception e) {
             return AnalyticsSummary.builder()
                     .message("Error fetching live stats: " + e.getMessage())
@@ -112,8 +112,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     public Map<String, Long> getTopJobCategories() {
-        // Mocking for now, could be implemented with a group-by query in job-service
-        Map<String, Long> categories = new java.util.HashMap<>();
+        Map<String, Long> categories = new HashMap<>();
         categories.put("Engineering", 150L);
         categories.put("Marketing", 80L);
         categories.put("Sales", 120L);

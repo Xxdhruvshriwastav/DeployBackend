@@ -15,6 +15,8 @@ import com.hireconnect.auth.dto.AuthResponse;
 import com.hireconnect.auth.dto.RegisterRequest;
 import java.util.Collections;
 import java.util.Optional;
+import org.springframework.http.HttpStatus;
+import com.hireconnect.auth.exception.CustomException;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +32,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public UserCredential register(RegisterRequest registerRequest, String role) {
         if (authRepository.existsByEmail(registerRequest.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw new CustomException("Email already registered", HttpStatus.BAD_REQUEST);
         }
         UserCredential user = new UserCredential();
         user.setEmail(registerRequest.getEmail());
@@ -43,10 +45,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public String login(String email, String password) {
         UserCredential user = authRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new CustomException("User not found", HttpStatus.NOT_FOUND));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new CustomException("Invalid credentials", HttpStatus.UNAUTHORIZED);
         }
 
         return jwtUtil.generateToken(user.getEmail(), user.getRole());
@@ -72,7 +74,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse googleLogin(String idToken) {
         if (idToken == null || idToken.isEmpty()) {
-            throw new RuntimeException("ID Token is missing. Please ensure your Google Origin settings are correct.");
+            throw new CustomException("ID Token is missing. Please ensure your Google Origin settings are correct.", HttpStatus.BAD_REQUEST);
         }
         try {
 
@@ -83,7 +85,7 @@ public class AuthServiceImpl implements AuthService {
 
             GoogleIdToken googleIdToken = verifier.verify(idToken);
             if (googleIdToken == null) {
-                throw new RuntimeException("Invalid Google ID Token (Verification failed)");
+                throw new CustomException("Invalid Google ID Token (Verification failed)", HttpStatus.UNAUTHORIZED);
             }
             
             GoogleIdToken.Payload payload = googleIdToken.getPayload();
@@ -118,7 +120,7 @@ public class AuthServiceImpl implements AuthService {
         } catch (Exception e) {
             System.err.println("Google Auth Error (Modern): " + e.getMessage());
             e.printStackTrace();
-            throw new RuntimeException("Google verification failed: " + e.getMessage());
+            throw new CustomException("Google verification failed: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
         }
     }
 
@@ -130,13 +132,13 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public UserCredential getUserByEmail(String email) {
         return authRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new CustomException("User not found", HttpStatus.NOT_FOUND));
     }
 
     @Override
     public UserCredential getUserById(int userId) {
         return authRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new CustomException("User not found", HttpStatus.NOT_FOUND));
     }
 
     @Override
